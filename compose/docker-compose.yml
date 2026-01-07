@@ -4,27 +4,12 @@ services:
     environment:
       POSTGRES_PASSWORD: temporal
       POSTGRES_USER: temporal
+    networks:
+      - temporal-network
     volumes:
       - /var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U temporal"]
-      interval: 5s
-      timeout: 5s
-      retries: 60
-      start_period: 30s
-
-  elasticsearch:
-    image: elasticsearch:${ELASTICSEARCH_VERSION}
-    environment:
-      - cluster.routing.allocation.disk.threshold_enabled=true
-      - cluster.routing.allocation.disk.watermark.low=512mb
-      - cluster.routing.allocation.disk.watermark.high=256mb
-      - cluster.routing.allocation.disk.watermark.flood_stage=128mb
-      - discovery.type=single-node
-      - ES_JAVA_OPTS=-Xms256m -Xmx256m
-      - xpack.security.enabled=false
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 60
@@ -36,8 +21,6 @@ services:
     depends_on:
       postgresql:
         condition: service_healthy
-      elasticsearch:
-        condition: service_healthy
     environment:
       - DB=postgres12
       - DB_PORT=5432
@@ -45,15 +28,12 @@ services:
       - POSTGRES_PWD=temporal
       - POSTGRES_SEEDS=postgresql
       - SQL_PASSWORD=temporal
-      - ES_HOST=elasticsearch
-      - ES_PORT=9200
-      - ES_SCHEME=http
-      - ES_VERSION=v7
-      - ES_VISIBILITY_INDEX=temporal_visibility_v1_dev
+    networks:
+      - temporal-network
     volumes:
       - ./scripts:/scripts
     entrypoint: ["/bin/sh"]
-    command: /scripts/setup-postgres-es.sh
+    command: /scripts/setup-postgres.sh
 
   temporal:
     image: temporalio/server:${TEMPORAL_VERSION}
@@ -66,11 +46,10 @@ services:
       - POSTGRES_USER=temporal
       - POSTGRES_PWD=temporal
       - POSTGRES_SEEDS=postgresql
-      - ENABLE_ES=true
-      - ES_SEEDS=elasticsearch
-      - ES_VERSION=v7
       - BIND_ON_IP=0.0.0.0
       - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
+    networks:
+      - temporal-network
     volumes:
       - ./dynamicconfig:/etc/temporal/config/dynamicconfig
     healthcheck:
@@ -89,6 +68,8 @@ services:
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
       - DEFAULT_NAMESPACE=default
+    networks:
+      - temporal-network
     volumes:
       - ./scripts:/scripts
     entrypoint: ["/bin/sh"]
@@ -102,3 +83,10 @@ services:
       - TEMPORAL_ADDRESS=temporal:7233
       - TEMPORAL_CORS_ORIGINS=http://localhost:3000
     image: temporalio/ui:${TEMPORAL_UI_VERSION}
+    networks:
+      - temporal-network
+
+networks:
+  temporal-network:
+    driver: bridge
+    name: temporal-network
