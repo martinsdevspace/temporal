@@ -1,14 +1,9 @@
 services:
   postgresql:
     image: postgres:${POSTGRESQL_VERSION}
-    container_name: temporal-postgresql
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_PASSWORD: temporal
       POSTGRES_USER: temporal
-    networks:
-      - temporal-network
     volumes:
       - /var/lib/postgresql/data
     healthcheck:
@@ -20,9 +15,6 @@ services:
 
   elasticsearch:
     image: elasticsearch:${ELASTICSEARCH_VERSION}
-    container_name: temporal-elasticsearch
-    ports:
-      - "9200:9200"
     environment:
       - cluster.routing.allocation.disk.threshold_enabled=true
       - cluster.routing.allocation.disk.watermark.low=512mb
@@ -31,8 +23,6 @@ services:
       - discovery.type=single-node
       - ES_JAVA_OPTS=-Xms256m -Xmx256m
       - xpack.security.enabled=false
-    networks:
-      - temporal-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s || exit 1"]
       interval: 5s
@@ -42,7 +32,6 @@ services:
 
   temporal-admin-tools:
     image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION}
-    container_name: temporal-admin-tools
     restart: on-failure:6
     depends_on:
       postgresql:
@@ -61,8 +50,6 @@ services:
       - ES_SCHEME=http
       - ES_VERSION=v7
       - ES_VISIBILITY_INDEX=temporal_visibility_v1_dev
-    networks:
-      - temporal-network
     volumes:
       - ./scripts:/scripts
     entrypoint: ["/bin/sh"]
@@ -70,7 +57,6 @@ services:
 
   temporal:
     image: temporalio/server:${TEMPORAL_VERSION}
-    container_name: temporal
     depends_on:
       temporal-admin-tools:
         condition: service_completed_successfully
@@ -85,10 +71,6 @@ services:
       - ES_VERSION=v7
       - BIND_ON_IP=0.0.0.0
       - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development-sql.yaml
-    networks:
-      - temporal-network
-    ports:
-      - '7233:7233'
     volumes:
       - ./dynamicconfig:/etc/temporal/config/dynamicconfig
     healthcheck:
@@ -100,7 +82,6 @@ services:
 
   temporal-create-namespace:
     image: temporalio/admin-tools:${TEMPORAL_ADMINTOOLS_VERSION}
-    container_name: temporal-create-namespace
     restart: on-failure:5
     depends_on:
       temporal:
@@ -108,15 +89,12 @@ services:
     environment:
       - TEMPORAL_ADDRESS=temporal:7233
       - DEFAULT_NAMESPACE=default
-    networks:
-      - temporal-network
     volumes:
       - ./scripts:/scripts
     entrypoint: ["/bin/sh"]
     command: /scripts/create-namespace.sh
 
   temporal-ui:
-    container_name: temporal-ui
     depends_on:
       temporal:
         condition: service_healthy
@@ -124,12 +102,3 @@ services:
       - TEMPORAL_ADDRESS=temporal:7233
       - TEMPORAL_CORS_ORIGINS=http://localhost:3000
     image: temporalio/ui:${TEMPORAL_UI_VERSION}
-    networks:
-      - temporal-network
-    ports:
-      - 8080:8080
-
-networks:
-  temporal-network:
-    driver: bridge
-    name: temporal-network
